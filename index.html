@@ -180,6 +180,7 @@
         <label style="font-size:12px; color:var(--text-hint); white-space:nowrap;">Category</label>
         <select id="officeCategory" style="font-size:12px; background:var(--bg); color:var(--text); border:0.5px solid var(--border); border-radius:var(--radius-sm); padding:3px 8px; cursor:pointer; flex:1;">
           <option value="">All Office Documents</option>
+          <option value="__insurance">Insurance</option>
           <option value="Agreements">Agreements</option>
           <option value="Broker Packets">Broker Packets</option>
           <option value="DACH">DACH</option>
@@ -192,6 +193,17 @@
       </div>
       <div class="status-bar" id="officeStatusBar"></div>
       <div class="error-bar" id="officeErrorBar"></div>
+    </div>
+    <div id="officeHintCard" style="display:none; margin-bottom:12px;">
+      <div style="background:var(--accent-bg); border:0.5px solid rgba(26,95,170,0.2); border-radius:var(--radius); overflow:hidden;">
+        <button onclick="toggleHint()" style="width:100%; display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:none; border:none; cursor:pointer; color:var(--accent); font-size:13px; font-weight:500;">
+          <span>📖 Where does this live?</span>
+          <span id="hintChevron" style="font-size:11px; transition:transform 0.2s;">▼</span>
+        </button>
+        <div id="hintBody" style="padding:0 14px 12px; display:none;">
+          <div id="hintContent"></div>
+        </div>
+      </div>
     </div>
     <div id="officeResultsGrid" style="display:none;">
       <div class="result-card" style="min-height:auto;">
@@ -217,6 +229,7 @@ const TRACTOR_FOLDER_PATH = 'Equipment/Tractors';
 const TRAILER_FOLDER_PATH = 'Equipment/Trailers';
 const CA_TRU_FOLDER_PATH  = 'Equipment/Trailers/1 CA TRU certificates';
 const OFFICE_FOLDER_PATH  = 'Office Documents';
+const INSURANCE_FOLDER_PATH = 'Insurance';
 
 // ─────────────────────────────────────────────
 //  SEARCH ALIASES — add new ones as needed
@@ -228,6 +241,45 @@ const SEARCH_ALIASES = {
   'insurance': 'COI',
   // add more below this line
 };
+// ─────────────────────────────────────────────
+
+// ─────────────────────────────────────────────
+//  LOOKUP GUIDE — from "Where Things Live" doc
+//  Format: ['search terms...'], 'Where it lives', 'Path'
+// ─────────────────────────────────────────────
+const LOOKUP_GUIDE = [
+  { terms: ['cdl', 'med card', 'medical card', 'license', 'carrier package'], where: "Driver's current CDL or Med Card", path: "Drivers / [Last, First] / 01 Operational" },
+  { terms: ['carrier package'], where: "Driver's Carrier Package", path: "Drivers / [Last, First] / 01 Operational" },
+  { terms: ['lease', 'current lease'], where: "Driver's current lease (PDF)", path: "Drivers / [Last, First] / 02 Compliance" },
+  { terms: ['word lease', 'draft lease', 'agreement', 'commercial package', 'passenger form', 'safety statement'], where: "Word/draft leases & agreements", path: "Drivers / [Last, First] / 02 Compliance / Agreements" },
+  { terms: ['dop', 'poa', 'accident report', 'audit'], where: "DOP, POA, accident report, audit", path: "Drivers / [Last, First] / 02 Compliance" },
+  { terms: ['citation', 'warning', 'violation', 'exam report'], where: "Citations & warnings", path: "Drivers / [Last, First] / 02 Compliance / Exam Reports" },
+  { terms: ['mvr', 'psp', 'background check', 'ssn', 'social security'], where: "MVR, PSP, Background Check, SSN", path: "Drivers / [Last, First] / 03 Confidential" },
+  { terms: ['boc3', 'mcs150', 'ucr', 'ein', 'llc doc', 'operating agreement', 'w9'], where: "BOC3, MCS150, UCR, EIN, LLC docs (owner-drivers)", path: "Drivers / [Last, First] / 03 Confidential / LLC" },
+  { terms: ['d&a', 'drug test', 'alcohol test', 'blueline', 'blue line'], where: "D&A (Blueline) test results", path: "Drivers / [Last, First] / 03 Confidential / Blueline" },
+  { terms: ['truck doc', 'truck document', 'tractor doc'], where: "A truck's documents", path: "Equipment / Tractors / [truck#]" },
+  { terms: ['trailer doc', 'trailer document'], where: "A trailer's documents", path: "Equipment / Trailers / [trailer#]" },
+  { terms: ['vendor', 'goodyear', 'kenworth', 'invoice'], where: "Vendor invoices", path: "Equipment / Vendors" },
+  { terms: ['insurance claim', 'claim'], where: "Insurance claim", path: "Insurance / Claims" },
+  { terms: ['carrier insurance', 'master info'], where: "Carrier insurance tracking", path: "Insurance / Carrier Insurance" },
+  { terms: ['broker packet', 'setup packet'], where: "Broker packet", path: "Office Documents / Broker Packets" },
+  { terms: ['dach', 'backup code', 'login code'], where: "DACH backup codes", path: "Office Documents / DACH / Backup Codes" },
+  { terms: ['efs', 'money code', 'efs money'], where: "EFS Money Codes records", path: "Office Documents / EFS Money Codes" },
+  { terms: ['factoring'], where: "Factoring records", path: "Office Documents / Factoring / [year]" },
+  { terms: ['payroll'], where: "Payroll records", path: "Office Documents / Payroll / [year]" },
+  { terms: ['onboarding', 'driver book'], where: "Driver onboarding materials", path: "Office Documents / Onboarding + Agreements" },
+  { terms: ['template', 'master template', 'form', 'checklist'], where: "Master templates & forms", path: "Office Documents / Templates & Forms / Master Documents" },
+  { terms: ['roster', 'current drivers', 'current trucks', 'driver list'], where: "Current driver/truck roster", path: "Driver Documents / Current Trucks & Drivers.xlsx" },
+  { terms: ['authority list', 'authority driver'], where: "Authority driver list", path: "Driver Documents / Authority Driver List.xlsx" },
+  { terms: ['coi', 'certificate', 'cert', 'insurance certificate'], where: "Insurance certificates", path: "Drivers / [Last, First] / 01 Operational" },
+];
+
+function findGuideMatches(query) {
+  const q = query.toLowerCase().trim();
+  return LOOKUP_GUIDE.filter(entry =>
+    entry.terms.some(term => q.includes(term) || term.includes(q))
+  );
+}
 // ─────────────────────────────────────────────
 
 const msalConfig = {
@@ -316,7 +368,7 @@ async function searchFolder(folderPath, query, token) {
     .map(mapItem);
 }
 
-// Fast search using SharePoint Search API — scoped to Office Documents folder
+// Search — uses folder listing for specific categories, Search API for "All"
 async function searchFolderDeep(folderPath, query, token, statusFn) {
   if (statusFn) statusFn('Searching...', true);
   const { driveId } = await getSiteDrive(token);
@@ -324,17 +376,42 @@ async function searchFolderDeep(folderPath, query, token, statusFn) {
   const limit = parseInt(document.getElementById('resultsLimit').value) || 25;
   const allResults = [];
   const seenUrls = new Set();
+  const category = document.getElementById('officeCategory').value;
 
-  for (const term of terms) {
-    if (allResults.length >= limit) break;
-    const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')&$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
-    let data;
-    try { data = await graphGet(searchUrl, token); } catch { continue; }
-    for (const item of (data.value || [])) {
+  if (category) {
+    // Specific category selected — use folder traversal (finds folder names accurately)
+    async function traverse(path, depth) {
+      if (depth > 5 || allResults.length >= limit) return;
+      const encoded = encodeURIComponent(path);
+      const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encoded}:/children?$top=500&$select=name,webUrl,folder,lastModifiedDateTime,parentReference`;
+      let children;
+      try { children = await graphGet(url, token); } catch { return; }
+      const subfolders = [];
+      for (const item of (children.value || [])) {
+        if (terms.some(t => item.name.toLowerCase().includes(t))) {
+          if (!seenUrls.has(item.webUrl)) {
+            seenUrls.add(item.webUrl);
+            allResults.push(mapItem(item));
+          }
+        }
+        if (item.folder) subfolders.push(item.name);
+      }
+      await Promise.all(subfolders.map(sub => traverse(`${path}/${sub}`, depth + 1)));
+    }
+    await traverse(folderPath, 0);
+  } else {
+    // All Office Documents — use Search API (fast but may miss folder names)
+    for (const term of terms) {
       if (allResults.length >= limit) break;
-      if (!seenUrls.has(item.webUrl)) {
-        seenUrls.add(item.webUrl);
-        allResults.push(mapItem(item));
+      const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')&$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
+      let data;
+      try { data = await graphGet(searchUrl, token); } catch { continue; }
+      for (const item of (data.value || [])) {
+        if (allResults.length >= limit) break;
+        if (!seenUrls.has(item.webUrl)) {
+          seenUrls.add(item.webUrl);
+          allResults.push(mapItem(item));
+        }
       }
     }
   }
@@ -530,9 +607,14 @@ async function runOfficeSearch() {
     setOfficeStatus('Starting deep search...', true);
     const token = await getToken();
     const category = document.getElementById('officeCategory').value;
-    const searchPath = category ? `${OFFICE_FOLDER_PATH}/${category}` : OFFICE_FOLDER_PATH;
+    const searchPath = category === '__insurance'
+      ? INSURANCE_FOLDER_PATH
+      : category
+        ? `${OFFICE_FOLDER_PATH}/${category}`
+        : OFFICE_FOLDER_PATH;
     const matches = await searchFolderDeep(searchPath, q, token, setOfficeStatus);
     setOfficeStatus(`Results for "${q}"`, false);
+    showHint(q);
     officeResultsGrid.style.display = 'block';
     setBadge(officeBadge, matches.length);
     officeContent.innerHTML = resultHTML(matches, q, 'results', true);
@@ -544,12 +626,39 @@ async function runOfficeSearch() {
   } finally { officeSearchBtn.disabled = false; }
 }
 
+function toggleHint() {
+  const body = document.getElementById('hintBody');
+  const chevron = document.getElementById('hintChevron');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+function showHint(query) {
+  const matches = findGuideMatches(query);
+  const card = document.getElementById('officeHintCard');
+  const hintContent = document.getElementById('hintContent');
+  const hintBody = document.getElementById('hintBody');
+  const chevron = document.getElementById('hintChevron');
+  if (!matches.length) { card.style.display = 'none'; return; }
+  hintContent.innerHTML = matches.map(m => `
+    <div style="margin-bottom:8px; padding-bottom:8px; border-bottom:0.5px solid rgba(26,95,170,0.15);">
+      <div style="font-size:13px; font-weight:500; color:var(--text);">${escHtml(m.where)}</div>
+      <div style="font-size:12px; color:var(--accent); margin-top:2px;">📁 ${escHtml(m.path)}</div>
+    </div>
+  `).join('').replace(/<div style="margin-bottom:8px[^>]+>([\s\S]*?)<\/div>\s*$/, '<div style="margin-bottom:0; padding-bottom:0; border-bottom:none;">$1</div>');
+  card.style.display = 'block';
+  hintBody.style.display = 'none';
+  chevron.style.transform = '';
+}
+
 function clearOfficeSearch() {
   officeInput.value = '';
   officeResultsGrid.style.display = 'none';
   officeStatusBar.innerHTML = '';
   officeErrorBar.style.display = 'none';
   officeContent.innerHTML = '<div class="empty-state">No results yet</div>';
+  document.getElementById('officeHintCard').style.display = 'none';
   officeBadge.textContent = '';
   officeInput.focus();
 }
