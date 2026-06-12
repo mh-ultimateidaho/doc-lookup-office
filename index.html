@@ -180,12 +180,12 @@
         <label style="font-size:12px; color:var(--text-hint); white-space:nowrap;">Category</label>
         <select id="officeCategory" style="font-size:12px; background:var(--bg); color:var(--text); border:0.5px solid var(--border); border-radius:var(--radius-sm); padding:3px 8px; cursor:pointer; flex:1;">
           <option value="">All Office Documents</option>
-          <option value="__insurance">Insurance</option>
           <option value="Agreements">Agreements</option>
           <option value="Broker Packets">Broker Packets</option>
           <option value="DACH">DACH</option>
           <option value="EFS Money Codes">EFS Money Codes</option>
           <option value="Factoring">Factoring</option>
+          <option value="__insurance">Insurance</option>
           <option value="Onboarding">Onboarding</option>
           <option value="Payroll">Payroll</option>
           <option value="Templates &amp; Forms">Templates &amp; Forms</option>
@@ -381,7 +381,7 @@ async function searchFolderDeep(folderPath, query, token, statusFn) {
   if (category) {
     // Specific category selected — use folder traversal (finds folder names accurately)
     async function traverse(path, depth) {
-      if (depth > 5 || allResults.length >= limit) return;
+      if (depth > 5) return;
       const encoded = encodeURIComponent(path);
       const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encoded}:/children?$top=500&$select=name,webUrl,folder,lastModifiedDateTime,parentReference`;
       let children;
@@ -396,9 +396,15 @@ async function searchFolderDeep(folderPath, query, token, statusFn) {
         }
         if (item.folder) subfolders.push(item.name);
       }
-      await Promise.all(subfolders.map(sub => traverse(`${path}/${sub}`, depth + 1)));
+      // Traverse subfolders sequentially so we can stop once limit is reached
+      for (const sub of subfolders) {
+        if (allResults.length >= limit) break;
+        await traverse(`${path}/${sub}`, depth + 1);
+      }
     }
     await traverse(folderPath, 0);
+    // Trim to limit after full traversal
+    allResults.splice(limit);
   } else {
     // All Office Documents — use Search API (fast but may miss folder names)
     for (const term of terms) {
