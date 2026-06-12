@@ -163,7 +163,33 @@
         <button class="btn-search" id="officeSearchBtn" onclick="runOfficeSearch()">Search</button>
         <button class="btn-search" id="officeClearBtn" onclick="clearOfficeSearch()" style="color:var(--text-hint);">Clear</button>
       </div>
-      <div class="search-hint">Try "certificate", "insurance", "COI", payroll dates, and more.</div>
+      <div style="display:flex; align-items:center; gap:10px; margin-top:8px; flex-wrap:wrap;">
+        <div class="search-hint" style="margin-top:0; flex:1;">Try "certificate", "insurance", "COI", payroll dates, and more.</div>
+        <div style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+          <label style="font-size:12px; color:var(--text-hint);">Show</label>
+          <select id="resultsLimit" style="font-size:12px; background:var(--bg); color:var(--text); border:0.5px solid var(--border); border-radius:var(--radius-sm); padding:2px 6px; cursor:pointer;">
+            <option value="10">10</option>
+            <option value="25" selected>25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+          <label style="font-size:12px; color:var(--text-hint);">results</label>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px; margin-top:8px;">
+        <label style="font-size:12px; color:var(--text-hint); white-space:nowrap;">Category</label>
+        <select id="officeCategory" style="font-size:12px; background:var(--bg); color:var(--text); border:0.5px solid var(--border); border-radius:var(--radius-sm); padding:3px 8px; cursor:pointer; flex:1;">
+          <option value="">All Office Documents</option>
+          <option value="Agreements">Agreements</option>
+          <option value="Broker Packets">Broker Packets</option>
+          <option value="DACH">DACH</option>
+          <option value="EFS Money Codes">EFS Money Codes</option>
+          <option value="Factoring">Factoring</option>
+          <option value="Onboarding">Onboarding</option>
+          <option value="Payroll">Payroll</option>
+          <option value="Templates &amp; Forms">Templates &amp; Forms</option>
+        </select>
+      </div>
       <div class="status-bar" id="officeStatusBar"></div>
       <div class="error-bar" id="officeErrorBar"></div>
     </div>
@@ -295,14 +321,17 @@ async function searchFolderDeep(folderPath, query, token, statusFn) {
   if (statusFn) statusFn('Searching...', true);
   const { driveId } = await getSiteDrive(token);
   const terms = buildTerms(query);
+  const limit = parseInt(document.getElementById('resultsLimit').value) || 25;
   const allResults = [];
   const seenUrls = new Set();
 
   for (const term of terms) {
-    const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')`;
+    if (allResults.length >= limit) break;
+    const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')&$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
     let data;
     try { data = await graphGet(searchUrl, token); } catch { continue; }
     for (const item of (data.value || [])) {
+      if (allResults.length >= limit) break;
       if (!seenUrls.has(item.webUrl)) {
         seenUrls.add(item.webUrl);
         allResults.push(mapItem(item));
@@ -313,6 +342,28 @@ async function searchFolderDeep(folderPath, query, token, statusFn) {
   return allResults;
 }
 
+function normalizeDateTerms(q) {
+  const extras = [];
+  // Match patterns like 5.31.26, 05.31.26, 5/31/26, 05/31/26
+  const datePattern = /^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})$/;
+  const m = q.match(datePattern);
+  if (m) {
+    const [, mm, dd, yy] = m;
+    const mmP = mm.padStart(2, '0');
+    const mmU = mm.replace(/^0/, '');
+    const ddP = dd.padStart(2, '0');
+    const ddU = dd.replace(/^0/, '');
+    // Generate both padded and unpadded, both . and / separators
+    for (const sep of ['.', '/']) {
+      extras.push(`${mmP}${sep}${ddP}${sep}${yy}`);
+      extras.push(`${mmU}${sep}${ddP}${sep}${yy}`);
+      extras.push(`${mmP}${sep}${ddU}${sep}${yy}`);
+      extras.push(`${mmU}${sep}${ddU}${sep}${yy}`);
+    }
+  }
+  return extras;
+}
+
 function buildTerms(query) {
   const q = query.toLowerCase().trim();
   const terms = [q];
@@ -321,21 +372,23 @@ function buildTerms(query) {
   for (const [key, val] of Object.entries(SEARCH_ALIASES)) {
     if (val.toLowerCase() === q) terms.push(key.toLowerCase());
   }
+  // Add date format variations
+  for (const d of normalizeDateTerms(q)) terms.push(d);
   return [...new Set(terms)];
 }
 
 function mapItem(item) {
-  // Extract a readable folder path from parentReference
   let folderPath = null;
   if (item.parentReference && item.parentReference.path) {
-    const raw = decodeURIComponent(item.parentReference.path);
-    // Strip everything up to and including "Office Documents"
-    const marker = 'Office Documents';
-    const idx = raw.indexOf(marker);
-    if (idx !== -1) {
-      const after = raw.slice(idx + marker.length).replace(/^\//, '');
-      folderPath = after ? after : null; // null if file is directly in Office Documents
-    }
+    try {
+      const raw = decodeURIComponent(item.parentReference.path);
+      const marker = 'Office Documents';
+      const idx = raw.indexOf(marker);
+      if (idx !== -1) {
+        const after = raw.slice(idx + marker.length).replace(/^\/+/, '');
+        folderPath = after || null;
+      }
+    } catch(e) {}
   }
   return {
     name: item.name,
@@ -476,7 +529,9 @@ async function runOfficeSearch() {
   try {
     setOfficeStatus('Starting deep search...', true);
     const token = await getToken();
-    const matches = await searchFolderDeep(OFFICE_FOLDER_PATH, q, token, setOfficeStatus);
+    const category = document.getElementById('officeCategory').value;
+    const searchPath = category ? `${OFFICE_FOLDER_PATH}/${category}` : OFFICE_FOLDER_PATH;
+    const matches = await searchFolderDeep(searchPath, q, token, setOfficeStatus);
     setOfficeStatus(`Results for "${q}"`, false);
     officeResultsGrid.style.display = 'block';
     setBadge(officeBadge, matches.length);
