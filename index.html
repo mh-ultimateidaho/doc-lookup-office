@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Office Doc Lookup — Ultimate Logistics</title>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.1);
+    --border-soft: rgba(0,0,0,0.06);
+    --text: #1a1a18;
+    --text-muted: #6b6b67;
+    --text-hint: #9e9e9a;
+    --accent: #1a5faa;
+    --accent-bg: #e8f0fb;
+    --success-bg: #eaf3de;
+    --success-text: #3b6d11;
+    --warn-bg: #faeeda;
+    --warn-text: #854f0b;
+    --danger-bg: #fcebeb;
+    --danger-text: #a32d2d;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --surface: #282825;
+      --border: rgba(255,255,255,0.1);
+      --border-soft: rgba(255,255,255,0.06);
+      --text: #efefec;
+      --text-muted: #a0a09b;
+      --text-hint: #6b6b66;
+      --accent: #6fa8e8;
+      --accent-bg: #0c3060;
+      --success-bg: #173404;
+      --success-text: #c0dd97;
+      --warn-bg: #412402;
+      --warn-text: #fac775;
+      --danger-bg: #501313;
+      --danger-text: #f7c1c1;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 2.5rem 1rem 4rem;
+  }
+
+  .shell { width: 100%; max-width: 660px; }
+
+  .app-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 2rem;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-icon {
+    width: 36px; height: 36px; border-radius: var(--radius-sm);
+    background: var(--accent); display: flex; align-items: center; justify-content: center;
+  }
+  .brand-icon svg { width: 20px; height: 20px; fill: #fff; }
+  .brand-text h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand-text p { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+  #authSection { text-align: center; padding: 3rem 1rem; }
+  #authSection p { font-size: 14px; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.6; }
+
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: #fff;
+    border: none; border-radius: var(--radius-sm);
+    padding: 0 20px; height: 40px; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary svg { width: 16px; height: 16px; fill: #fff; }
+
+  .user-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: 100px; padding: 4px 12px 4px 4px;
+    font-size: 13px; color: var(--text-muted);
+  }
+  .avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent-bg); color: var(--accent);
+    font-size: 11px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sign-out-btn {
+    background: none; border: none; color: var(--text-hint);
+    font-size: 12px; cursor: pointer; margin-left: 4px;
+    padding: 0; text-decoration: underline;
+  }
+  .sign-out-btn:hover { color: var(--text-muted); }
+
+  #searchSection { display: none; }
+
+  .section-divider {
+    border-top: 0.5px solid var(--border);
+    margin: 0 0 1.5rem;
+    position: relative;
+  }
+  .section-label {
+    position: absolute; top: -10px; left: 0;
+    background: var(--bg); padding-right: 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-hint);
+  }
+
+  .search-card {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .search-row { display: flex; gap: 8px; }
+  .search-row input {
+    flex: 1; height: 42px; padding: 0 14px;
+    font-size: 15px; border-radius: var(--radius-sm);
+    border: 0.5px solid var(--border);
+    background: var(--bg); color: var(--text);
+    outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .search-row input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(26,95,170,0.12);
+  }
+  .search-hint { font-size: 12px; color: var(--text-hint); margin-top: 6px; }
+  .btn-search {
+    height: 42px; padding: 0 20px; font-size: 14px; font-weight: 500;
+    border-radius: var(--radius-sm); border: 0.5px solid var(--border);
+    background: var(--surface); color: var(--text);
+    cursor: pointer; white-space: nowrap; transition: background 0.15s;
+  }
+  .btn-search:hover { background: var(--bg); }
+  .btn-search:active { transform: scale(0.98); }
+  .btn-search:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .status-bar {
+    font-size: 13px; color: var(--text-muted);
+    min-height: 20px; padding: 0 2px; margin-top: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .spinner {
+    width: 13px; height: 13px; flex-shrink: 0;
+    border: 2px solid var(--border); border-top-color: var(--text-muted);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0; }
+  @media (max-width: 500px) { .results-grid { grid-template-columns: 1fr; } }
+
+  .result-card {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: var(--radius); padding: 1rem 1.125rem;
+    min-height: 130px;
+  }
+  .card-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-hint);
+    margin-bottom: 10px;
+  }
+  .result-item { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 0.5px solid var(--border-soft); }
+  .result-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  .result-name { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; word-break: break-word; }
+  .result-meta { font-size: 12px; color: var(--text-muted); }
+  .result-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-top: 6px; font-size: 12px; color: var(--accent);
+    text-decoration: none; font-weight: 500;
+  }
+  .result-link:hover { text-decoration: underline; }
+  .result-link svg { width: 11px; height: 11px; fill: var(--accent); flex-shrink: 0; }
+  .empty-state { font-size: 13px; color: var(--text-hint); font-style: italic; }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 500;
+    padding: 2px 8px; border-radius: 100px; margin-left: 6px;
+  }
+  .badge-found { background: var(--success-bg); color: var(--success-text); }
+  .badge-none  { background: var(--warn-bg);    color: var(--warn-text); }
+  .error-bar {
+    background: var(--danger-bg); border: 0.5px solid rgba(163,45,45,0.2);
+    border-radius: var(--radius-sm); padding: 8px 12px;
+    font-size: 13px; color: var(--danger-text); margin-top: 8px; display: none;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="app-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+      </div>
+      <div class="brand-text">
+        <h1>Office Doc Lookup</h1>
+        <p>Ultimate Logistics LLC</p>
+      </div>
+    </div>
+    <div id="userPill" style="display:none;" class="user-pill">
+      <div class="avatar" id="userInitials">?</div>
+      <span id="userName">—</span>
+      <button class="sign-out-btn" onclick="signOut()">sign out</button>
+    </div>
+  </div>
+
+  <div id="authSection">
+    <p>Sign in with your Microsoft work account to search office documents.</p>
+    <button class="btn-primary" onclick="signIn()">
+      <svg viewBox="0 0 24 24"><path d="M11.5 2.5H2.5V11.5H11.5V2.5ZM21.5 2.5H12.5V11.5H21.5V2.5ZM11.5 12.5H2.5V21.5H11.5V12.5ZM21.5 12.5H12.5V21.5H21.5V12.5Z"/></svg>
+      Sign in with Microsoft
+    </button>
+  </div>
+
+  <div id="searchSection">
+
+    <!-- Office Documents -->
+    <div class="section-divider"><span class="section-label">Office Documents</span></div>
+    <div class="search-card">
+      <div class="search-row">
+        <input type="text" id="officeInput" placeholder="Search office documents..." autocomplete="off" />
+        <button class="btn-search" id="officeSearchBtn" onclick="runOfficeSearch()">Search</button>
+      </div>
+      <div class="search-hint">Try "certificate", "insurance", "COI" and more.</div>
+      <div class="status-bar" id="officeStatusBar"></div>
+      <div class="error-bar" id="officeErrorBar"></div>
+    </div>
+    <div id="officeResultsGrid" style="display:none;">
+      <div class="result-card" style="min-height:auto;">
+        <div class="card-label">Results <span class="badge" id="officeBadge"></span></div>
+        <div id="officeContent"><div class="empty-state">No results yet</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIGURATION
+// ─────────────────────────────────────────────
+const CLIENT_ID     = '3c1066e0-8963-49c7-abfb-540e78612ceb';
+const TENANT_ID     = '2c6b3d13-b98c-4605-8fcc-d8eed3579136';
+const TENANT_DOMAIN = 'ultimatecorp.sharepoint.com';
+const MAIN_SITE     = 'sites/UltimateLogisticsLLC';
+const OFFICE_FOLDER = 'Office Documents';
+
+// ─────────────────────────────────────────────
+//  SEARCH ALIASES
+//  Add new ones as needed — format is:
+//  'what they type': 'what to also search for',
+// ─────────────────────────────────────────────
+const SEARCH_ALIASES = {
+  'certificate': 'COI',
+  'cert': 'COI',
+  'insurance': 'COI',
+  // add more below this line
+};
+// ─────────────────────────────────────────────
+
+const msalConfig = {
+  auth: {
+    clientId: CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+    redirectUri: 'https://mh-ultimateidaho.github.io/doc-lookup/office.html',
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+};
+
+const loginScopes = ['Files.Read', 'Sites.Read.All'];
+let msalInstance, currentAccount;
+
+async function initMsal() {
+  msalInstance = new msal.PublicClientApplication(msalConfig);
+  await msalInstance.initialize();
+  const result = await msalInstance.handleRedirectPromise();
+  if (result) setAccount(result.account);
+  else {
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length) setAccount(accounts[0]);
+  }
+}
+
+function setAccount(account) {
+  currentAccount = account;
+  const name = account.name || account.username;
+  const initials = name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2);
+  document.getElementById('userInitials').textContent = initials;
+  document.getElementById('userName').textContent = name;
+  document.getElementById('userPill').style.display = 'flex';
+  document.getElementById('authSection').style.display = 'none';
+  document.getElementById('searchSection').style.display = 'block';
+}
+
+async function signIn() {
+  if (!msalInstance) return;
+  try { await msalInstance.loginRedirect({ scopes: loginScopes }); }
+  catch (e) { console.error(e); }
+}
+
+async function signOut() {
+  if (!msalInstance) return;
+  await msalInstance.logoutRedirect();
+}
+
+async function getToken() {
+  const req = { scopes: loginScopes, account: currentAccount };
+  try {
+    const r = await msalInstance.acquireTokenSilent(req);
+    return r.accessToken;
+  } catch {
+    await msalInstance.acquireTokenRedirect(req);
+  }
+}
+
+async function graphGet(url, token) {
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) throw new Error(`Graph ${r.status}: ${r.statusText}`);
+  return r.json();
+}
+
+let cachedSiteId = null;
+let cachedDriveId = null;
+
+async function getSiteDrive(token) {
+  if (cachedSiteId && cachedDriveId) return { siteId: cachedSiteId, driveId: cachedDriveId };
+  const site = await graphGet(`https://graph.microsoft.com/v1.0/sites/${TENANT_DOMAIN}:/${MAIN_SITE}`, token);
+  cachedSiteId = site.id;
+  const drives = await graphGet(`https://graph.microsoft.com/v1.0/sites/${cachedSiteId}/drives`, token);
+  console.log('Available drives:', drives.value.map(d => d.name));
+  const drive = drives.value.find(d => d.name === 'Documents') || drives.value.find(d => d.name === 'Shared Documents') || drives.value[0];
+  cachedDriveId = drive.id;
+  return { siteId: cachedSiteId, driveId: cachedDriveId };
+}
+
+async function searchFolder(folderPath, query, token) {
+  const { driveId } = await getSiteDrive(token);
+  const encoded = encodeURIComponent(folderPath);
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encoded}:/children?$top=500`;
+  const children = await graphGet(url, token);
+
+  // Build list of terms to search (original + any aliases)
+  const terms = [query.toLowerCase().trim()];
+  const aliasValue = SEARCH_ALIASES[query.toLowerCase().trim()];
+  if (aliasValue) terms.push(aliasValue.toLowerCase());
+  // Also check if query matches any alias value and add the alias key
+  for (const [key, val] of Object.entries(SEARCH_ALIASES)) {
+    if (val.toLowerCase() === query.toLowerCase().trim()) terms.push(key.toLowerCase());
+  }
+
+  return (children.value || [])
+    .filter(item => terms.some(term => item.name.toLowerCase().includes(term)))
+    .map(item => ({
+      name: item.name,
+      url: item.webUrl,
+      isFolder: !!item.folder,
+      modified: item.lastModifiedDateTime
+        ? new Date(item.lastModifiedDateTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : null
+    }));
+}
+
+function resultHTML(items, query) {
+  if (!items.length) return `<div class="empty-state">No results found for "${escHtml(query)}"</div>`;
+  return items.map(item => `
+    <div class="result-item">
+      <div class="result-name">${escHtml(item.name)}</div>
+      ${item.modified ? `<div class="result-meta">Modified ${escHtml(item.modified)}</div>` : ''}
+      <a class="result-link" href="${escHtml(item.url)}" target="_blank" rel="noopener">
+        Open ${item.isFolder ? 'folder' : 'file'}
+        <svg viewBox="0 0 24 24"><path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+      </a>
+    </div>`).join('');
+}
+
+function setBadge(el, count) {
+  el.textContent = count ? `${count} found` : 'Not found';
+  el.className = 'badge ' + (count ? 'badge-found' : 'badge-none');
+}
+
+const officeInput      = document.getElementById('officeInput');
+const officeSearchBtn  = document.getElementById('officeSearchBtn');
+const officeStatusBar  = document.getElementById('officeStatusBar');
+const officeErrorBar   = document.getElementById('officeErrorBar');
+const officeResultsGrid = document.getElementById('officeResultsGrid');
+const officeContent    = document.getElementById('officeContent');
+const officeBadge      = document.getElementById('officeBadge');
+
+officeInput.addEventListener('keydown', e => { if (e.key === 'Enter') runOfficeSearch(); });
+
+function setOfficeStatus(msg, spin) {
+  officeStatusBar.innerHTML = spin ? `<div class="spinner"></div>${msg}` : msg;
+}
+
+async function runOfficeSearch() {
+  const q = officeInput.value.trim();
+  if (!q) return;
+  officeSearchBtn.disabled = true;
+  officeErrorBar.style.display = 'none';
+  officeResultsGrid.style.display = 'none';
+  officeContent.innerHTML = '<div class="empty-state">Searching...</div>';
+  officeBadge.textContent = '';
+  try {
+    setOfficeStatus('Getting access token...', true);
+    const token = await getToken();
+    setOfficeStatus('Searching office documents...', true);
+    const matches = await searchFolder(OFFICE_FOLDER, q, token);
+    setOfficeStatus(`Results for "${q}"`, false);
+    officeResultsGrid.style.display = 'block';
+    setBadge(officeBadge, matches.length);
+    officeContent.innerHTML = resultHTML(matches, q);
+  } catch (err) {
+    console.error(err);
+    setOfficeStatus('', false);
+    officeErrorBar.textContent = `Search failed: ${err.message}`;
+    officeErrorBar.style.display = 'block';
+  } finally {
+    officeSearchBtn.disabled = false;
+  }
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+initMsal();
+</script>
+</body>
+</html>
