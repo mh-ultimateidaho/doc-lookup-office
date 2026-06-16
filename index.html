@@ -409,7 +409,7 @@ async function searchFolderDeep(folderPath, query, token, statusFn, limitOverrid
     // All Office Documents — use Search API (fast but may miss folder names)
     for (const term of terms) {
       if (allResults.length >= limit) break;
-      const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')&$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
+      const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')?$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
       let data;
       try { data = await graphGet(searchUrl, token); } catch { continue; }
       for (const item of (data.value || [])) {
