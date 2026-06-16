@@ -526,7 +526,19 @@ async function runDriverSearch() {
   try {
     setDriverStatus('Searching driver documents...', true);
     const token = await getToken();
-    const matches = await searchFolderDeep(DRIVER_FOLDER_PATH, q, token, setDriverStatus, Infinity);
+    // Search top level + all three subfolders shallowly — returns folders only
+    const [top, current, potential, old] = await Promise.all([
+      searchFolder(DRIVER_FOLDER_PATH, q, token),
+      searchFolder('Driver Documents/Current Driver Folders', q, token).catch(() => []),
+      searchFolder('Driver Documents/1 Potential Drivers', q, token).catch(() => []),
+      searchFolder('Driver Documents/2 Old Drivers', q, token).catch(() => []),
+    ]);
+    const seenUrls = new Set();
+    const matches = [...top, ...current, ...potential, ...old].filter(item => {
+      if (seenUrls.has(item.url)) return false;
+      seenUrls.add(item.url);
+      return item.isFolder; // folders only
+    });
     setDriverStatus(`Results for "${q}"`, false);
     driverResultsGrid.style.display = 'grid';
     setBadge(driverBadge, matches.length);
