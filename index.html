@@ -369,11 +369,11 @@ async function searchFolder(folderPath, query, token) {
 }
 
 // Search — uses folder listing for specific categories, Search API for "All"
-async function searchFolderDeep(folderPath, query, token, statusFn) {
+async function searchFolderDeep(folderPath, query, token, statusFn, limitOverride) {
   if (statusFn) statusFn('Searching...', true);
   const { driveId } = await getSiteDrive(token);
   const terms = buildTerms(query);
-  const limit = parseInt(document.getElementById('resultsLimit').value) || 25;
+  const limit = limitOverride !== undefined ? limitOverride : (parseInt((document.getElementById('resultsLimit') || {}).value) || 25);
   const allResults = [];
   const seenUrls = new Set();
   const category = document.getElementById('officeCategory').value;
@@ -526,7 +526,7 @@ async function runDriverSearch() {
   try {
     setDriverStatus('Searching driver documents...', true);
     const token = await getToken();
-    const matches = await searchFolderDeep(DRIVER_FOLDER_PATH, q, token, setDriverStatus);
+    const matches = await searchFolderDeep(DRIVER_FOLDER_PATH, q, token, setDriverStatus, Infinity);
     setDriverStatus(`Results for "${q}"`, false);
     driverResultsGrid.style.display = 'grid';
     setBadge(driverBadge, matches.length);
