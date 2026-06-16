@@ -119,13 +119,13 @@
         <input type="text" id="driverInput" placeholder="Enter driver name..." autocomplete="off" />
         <button class="btn-search" id="driverSearchBtn" onclick="runDriverSearch()">Search</button>
       </div>
-      <div class="search-hint">For best results, use last name only.</div>
+      <div class="search-hint">For best results, use last name only. Searches current, potential, and old drivers.</div>
       <div class="status-bar" id="driverStatusBar"></div>
       <div class="error-bar" id="driverErrorBar"></div>
     </div>
     <div class="results-grid" id="driverResultsGrid" style="display:none;">
       <div class="result-card" style="grid-column: 1 / -1;">
-        <div class="card-label">Driver Documents <span class="badge" id="driverBadge"></span></div>
+        <div class="card-label">Driver Documents (Current, Potential &amp; Old) <span class="badge" id="driverBadge"></span></div>
         <div id="driverContent"><div class="empty-state">No results yet</div></div>
       </div>
     </div>
@@ -526,7 +526,7 @@ async function runDriverSearch() {
   try {
     setDriverStatus('Searching driver documents...', true);
     const token = await getToken();
-    const matches = await searchFolder(DRIVER_FOLDER_PATH, q, token);
+    const matches = await searchFolderDeep(DRIVER_FOLDER_PATH, q, token, setDriverStatus);
     setDriverStatus(`Results for "${q}"`, false);
     driverResultsGrid.style.display = 'grid';
     setBadge(driverBadge, matches.length);
