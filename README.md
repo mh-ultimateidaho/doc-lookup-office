@@ -93,11 +93,6 @@ If the tool moves to a new URL, add the new URL in Azure Portal → App registra
 ## Planned Updates
 Updates/ideas to implement.
 ### Pending
-- feature edit: make "Show ## results" filter default to 5
-- feature edit: make search results sort by most recently modified
-- issue fix: if a search is still "searching" and then a new search is entered, the new search doesn't override the old. E.g. searched for "6.15.26" and while it was still searching I searched for "5.31.26", the results returned "6.15.26" search results.
-- issue fix: you have to hit clear before you can do a new search. should be able to do new search without clearing, and the results will just replace the old results.
-- isssue fix: searching is still laggy/slow
-- feature edit: the "Office Documents" search should also include the driver & equipment files. e.g. searching for a truck lease but not sure which driver, I would use the "Office Documents" search instead of the "Driver Documents" search, because a truck could have been leased to multiple drivers therefore multiple results.
+- 
 
 ---
