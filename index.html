@@ -642,7 +642,7 @@ const officeErrorBar    = document.getElementById('officeErrorBar');
 const officeResultsGrid = document.getElementById('officeResultsGrid');
 const officeContent     = document.getElementById('officeContent');
 const officeBadge       = document.getElementById('officeBadge');
-let officeSearchId = 0; // increments each search to cancel stale results
+
 
 officeInput.addEventListener('keydown', e => { if (e.key === 'Enter') runOfficeSearch(); });
 function setOfficeStatus(msg, spin) { officeStatusBar.innerHTML = spin ? `<div class="spinner"></div>${msg}` : msg; }
