@@ -168,8 +168,9 @@
         <div style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
           <label style="font-size:12px; color:var(--text-hint);">Show</label>
           <select id="resultsLimit" style="font-size:12px; background:var(--bg); color:var(--text); border:0.5px solid var(--border); border-radius:var(--radius-sm); padding:2px 6px; cursor:pointer;">
+            <option value="5" selected>5</option>
             <option value="10">10</option>
-            <option value="25" selected>25</option>
+            <option value="25">25</option>
             <option value="50">50</option>
             <option value="100">100</option>
           </select>
@@ -365,7 +366,13 @@ async function searchFolder(folderPath, query, token) {
   const terms = buildTerms(query);
   return (children.value || [])
     .filter(item => terms.some(t => item.name.toLowerCase().includes(t)))
-    .map(mapItem);
+    .map(mapItem)
+    .sort((a, b) => {
+      if (!a.modified && !b.modified) return 0;
+      if (!a.modified) return 1;
+      if (!b.modified) return -1;
+      return new Date(b.modifiedRaw) - new Date(a.modifiedRaw);
+    });
 }
 
 // Search — uses folder listing for specific categories, Search API for "All"
@@ -406,22 +413,47 @@ async function searchFolderDeep(folderPath, query, token, statusFn, limitOverrid
     // Trim to limit after full traversal
     allResults.splice(limit);
   } else {
-    // All Office Documents — use Search API (fast but may miss folder names)
-    for (const term of terms) {
-      if (allResults.length >= limit) break;
-      const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folderPath)}:/search(q='${encodeURIComponent(term)}')?$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
-      let data;
-      try { data = await graphGet(searchUrl, token); } catch { continue; }
-      for (const item of (data.value || [])) {
+    // All Office Documents + Driver & Equipment — parallel search across all folders
+    const searchFolders = [
+      OFFICE_FOLDER_PATH,
+      DRIVER_FOLDER_PATH,
+      TRACTOR_FOLDER_PATH,
+      TRAILER_FOLDER_PATH,
+      INSURANCE_FOLDER_PATH,
+    ];
+    const searchPromises = searchFolders.map(async folder => {
+      const results = [];
+      for (const term of terms) {
+        const searchUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodeURIComponent(folder)}:/search(q='${encodeURIComponent(term)}')?$select=name,webUrl,folder,lastModifiedDateTime,parentReference&$top=200`;
+        let data;
+        try { data = await graphGet(searchUrl, token); } catch { continue; }
+        for (const item of (data.value || [])) {
+          if (!results.find(r => r.url === item.webUrl)) {
+            results.push(mapItem(item));
+          }
+        }
+      }
+      return results;
+    });
+    const allFolderResults = await Promise.all(searchPromises);
+    for (const results of allFolderResults) {
+      for (const item of results) {
         if (allResults.length >= limit) break;
-        if (!seenUrls.has(item.webUrl)) {
-          seenUrls.add(item.webUrl);
-          allResults.push(mapItem(item));
+        if (!seenUrls.has(item.url)) {
+          seenUrls.add(item.url);
+          allResults.push(item);
         }
       }
     }
   }
 
+  // Sort by most recently modified
+  allResults.sort((a, b) => {
+    if (!a.modifiedRaw && !b.modifiedRaw) return 0;
+    if (!a.modifiedRaw) return 1;
+    if (!b.modifiedRaw) return -1;
+    return new Date(b.modifiedRaw) - new Date(a.modifiedRaw);
+  });
   return allResults;
 }
 
@@ -478,6 +510,7 @@ function mapItem(item) {
     url: item.webUrl,
     isFolder: !!item.folder,
     folderPath,
+    modifiedRaw: item.lastModifiedDateTime || null,
     modified: item.lastModifiedDateTime
       ? new Date(item.lastModifiedDateTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : null
@@ -609,20 +642,23 @@ const officeErrorBar    = document.getElementById('officeErrorBar');
 const officeResultsGrid = document.getElementById('officeResultsGrid');
 const officeContent     = document.getElementById('officeContent');
 const officeBadge       = document.getElementById('officeBadge');
+let officeSearchId = 0; // increments each search to cancel stale results
 
 officeInput.addEventListener('keydown', e => { if (e.key === 'Enter') runOfficeSearch(); });
 function setOfficeStatus(msg, spin) { officeStatusBar.innerHTML = spin ? `<div class="spinner"></div>${msg}` : msg; }
 
+let officeSearchId = 0;
+
 async function runOfficeSearch() {
   const q = officeInput.value.trim();
   if (!q) return;
-  officeSearchBtn.disabled = true;
+  const myId = ++officeSearchId;
   officeErrorBar.style.display = 'none';
   officeResultsGrid.style.display = 'none';
   officeContent.innerHTML = '<div class="empty-state">Searching...</div>';
   officeBadge.textContent = '';
   try {
-    setOfficeStatus('Starting deep search...', true);
+    setOfficeStatus(`Searching for "${q}"...`, true);
     const token = await getToken();
     const category = document.getElementById('officeCategory').value;
     const searchPath = category === '__insurance'
@@ -630,18 +666,22 @@ async function runOfficeSearch() {
       : category
         ? `${OFFICE_FOLDER_PATH}/${category}`
         : OFFICE_FOLDER_PATH;
-    const matches = await searchFolderDeep(searchPath, q, token, setOfficeStatus);
+    const matches = await searchFolderDeep(searchPath, q, token, (msg, spin) => {
+      if (myId === officeSearchId) setOfficeStatus(msg, spin);
+    });
+    if (myId !== officeSearchId) return; // stale search — discard
     setOfficeStatus(`Results for "${q}"`, false);
     showHint(q);
     officeResultsGrid.style.display = 'block';
     setBadge(officeBadge, matches.length);
     officeContent.innerHTML = resultHTML(matches, q, 'results', true);
   } catch (err) {
+    if (myId !== officeSearchId) return;
     console.error(err);
     setOfficeStatus('', false);
     officeErrorBar.textContent = `Search failed: ${err.message}`;
     officeErrorBar.style.display = 'block';
-  } finally { officeSearchBtn.disabled = false; }
+  }
 }
 
 function toggleHint() {
